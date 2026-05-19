@@ -10,6 +10,7 @@ import {
   LogOut,
   ChevronRight,
 } from 'lucide-react';
+import { isValidStoredAdminAuth } from '../lib/adminAuth';
 
 interface Person {
   id: string;
@@ -44,7 +45,8 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!sessionStorage.getItem('admin_auth')) {
+    if (!isValidStoredAdminAuth(sessionStorage.getItem('admin_auth'))) {
+      sessionStorage.removeItem('admin_auth');
       navigate('/admin');
       return;
     }

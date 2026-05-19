@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Shield, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { isValidAdminCredential, isValidStoredAdminAuth } from '../lib/adminAuth';
 
 export default function AdminLoginPage() {
   const [username, setUsername] = useState('');
@@ -10,10 +11,23 @@ export default function AdminLoginPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const stored = sessionStorage.getItem('admin_auth');
+    if (!isValidStoredAdminAuth(stored)) {
+      sessionStorage.removeItem('admin_auth');
+    }
+  }, []);
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
+
+    if (!isValidAdminCredential(username, password)) {
+      setError('Invalid username or password.');
+      setLoading(false);
+      return;
+    }
 
     try {
       const credentials = btoa(`${username}:${password}`);
