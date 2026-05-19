@@ -29,27 +29,9 @@ export default function AdminLoginPage() {
       return;
     }
 
-    try {
-      const credentials = btoa(`${username}:${password}`);
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-api/`;
-
-      const res = await fetch(apiUrl, {
-        headers: {
-          Authorization: `Basic ${credentials}`,
-        },
-      });
-
-      if (res.ok) {
-        sessionStorage.setItem('admin_auth', credentials);
-        navigate('/admin/dashboard');
-      } else {
-        setError('Invalid username or password.');
-      }
-    } catch {
-      setError('Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    sessionStorage.setItem('admin_auth', btoa(`${username}:${password}`));
+    navigate('/admin/dashboard');
+    setLoading(false);
   }
 
   return (

@@ -10,7 +10,8 @@ import {
   LogOut,
   ChevronRight,
 } from 'lucide-react';
-import { isValidStoredAdminAuth } from '../lib/adminAuth';
+import { getStoredAdminCredentials, isValidStoredAdminAuth } from '../lib/adminAuth';
+import { supabase } from '../lib/supabase';
 
 interface Person {
   id: string;
@@ -24,13 +25,6 @@ interface Description {
   author_name: string;
   created_at: string;
 }
-
-function getAuthHeaders() {
-  const credentials = sessionStorage.getItem('admin_auth');
-  return { Authorization: `Basic ${credentials}` };
-}
-
-const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-api`;
 
 export default function AdminDashboard() {
   const [people, setPeople] = useState<Person[]>([]);
@@ -54,32 +48,30 @@ export default function AdminDashboard() {
   }, [navigate]);
 
   async function fetchPeople() {
-    try {
-      const res = await fetch(`${API_BASE}/`, { headers: getAuthHeaders() });
-      if (!res.ok) throw new Error('Auth failed');
-      const data = await res.json();
-      setPeople(data);
-    } catch {
+    const { data, error } = await supabase
+      .from('people')
+      .select('id, name, created_at')
+      .order('name');
+
+    if (error) {
       sessionStorage.removeItem('admin_auth');
       navigate('/admin');
-    } finally {
-      setLoading(false);
+    } else {
+      setPeople(data ?? []);
     }
+    setLoading(false);
   }
 
   const fetchDescriptions = useCallback(async (personId: string) => {
     setDescLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/descriptions/${personId}`, {
-        headers: getAuthHeaders(),
-      });
-      const data = await res.json();
-      setDescriptions(data);
-    } catch {
-      setDescriptions([]);
-    } finally {
-      setDescLoading(false);
-    }
+    const { data, error } = await supabase
+      .from('descriptions')
+      .select('id, content, author_name, created_at')
+      .eq('person_id', personId)
+      .order('created_at', { ascending: false });
+
+    setDescriptions(error ? [] : (data ?? []));
+    setDescLoading(false);
   }, []);
 
   function selectPerson(person: Person) {
@@ -88,45 +80,52 @@ export default function AdminDashboard() {
   }
 
   async function handleAddPerson() {
-    if (!newName.trim()) return;
+    const creds = getStoredAdminCredentials();
+    if (!creds || !newName.trim()) return;
+
     setAdding(true);
     setAddError('');
-    try {
-      const res = await fetch(`${API_BASE}/people`, {
-        method: 'POST',
-        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim() }),
-      });
-      if (res.ok) {
-        const person = await res.json();
-        setPeople((prev) => [...prev, person].sort((a, b) => a.name.localeCompare(b.name)));
-        setNewName('');
-        setShowAddModal(false);
+    const { data, error } = await supabase.rpc('admin_add_person', {
+      p_username: creds.username,
+      p_password: creds.password,
+      p_name: newName.trim(),
+    });
+
+    if (error) {
+      if (error.code === '23505') {
+        setAddError('Person already exists');
+      } else if (error.code === '42501' || error.message.includes('credentials')) {
+        setAddError('Invalid admin credentials.');
+      } else if (error.code === 'PGRST202') {
+        setAddError('Admin setup incomplete. Run the SQL migration in Supabase.');
       } else {
-        const data = await res.json();
-        setAddError(data.error || 'Failed to add person');
+        setAddError(error.message || 'Failed to add person');
       }
-    } catch {
-      setAddError('Something went wrong');
-    } finally {
-      setAdding(false);
+    } else {
+      const person = data as Person;
+      setPeople((prev) => [...prev, person].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewName('');
+      setShowAddModal(false);
     }
+    setAdding(false);
   }
 
   async function handleDeletePerson(id: string) {
-    if (!confirm('Delete this person and all their notes?')) return;
-    try {
-      await fetch(`${API_BASE}/people/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      });
+    const creds = getStoredAdminCredentials();
+    if (!creds || !confirm('Delete this person and all their notes?')) return;
+
+    const { error } = await supabase.rpc('admin_delete_person', {
+      p_username: creds.username,
+      p_password: creds.password,
+      p_person_id: id,
+    });
+
+    if (!error) {
       setPeople((prev) => prev.filter((p) => p.id !== id));
       if (selectedPerson?.id === id) {
         setSelectedPerson(null);
         setDescriptions([]);
       }
-    } catch {
-      // silently fail
     }
   }
 

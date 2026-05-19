@@ -1,5 +1,5 @@
-export const ADMIN_USERNAME = 'ADMIN';
-export const ADMIN_PASSWORD = '1234554321';
+export const ADMIN_USERNAME = import.meta.env.VITE_ADMIN_USERNAME ?? 'ADMIN';
+export const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD ?? '1234554321';
 
 export function isValidAdminCredential(username: string, password: string): boolean {
   return username === ADMIN_USERNAME && password === ADMIN_PASSWORD;
@@ -14,4 +14,11 @@ export function isValidStoredAdminAuth(stored: string | null): boolean {
   } catch {
     return false;
   }
+}
+
+export function getStoredAdminCredentials(): { username: string; password: string } | null {
+  const stored = sessionStorage.getItem('admin_auth');
+  if (!isValidStoredAdminAuth(stored)) return null;
+  const [username, password] = atob(stored!).split(':');
+  return { username, password };
 }
