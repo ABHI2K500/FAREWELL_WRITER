@@ -32,8 +32,9 @@ export default function AdminDashboard() {
   const [descriptions, setDescriptions] = useState<Description[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
-  const [addError, setAddError] = useState('');
+  const [adminError, setAdminError] = useState('');
   const [adding, setAdding] = useState(false);
+  const [deletingPersonId, setDeletingPersonId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [descLoading, setDescLoading] = useState(false);
   const navigate = useNavigate();
@@ -84,7 +85,7 @@ export default function AdminDashboard() {
     if (!creds || !newName.trim()) return;
 
     setAdding(true);
-    setAddError('');
+    setAdminError('');
     const { data, error } = await supabase.rpc('admin_add_person', {
       p_username: creds.username,
       p_password: creds.password,
@@ -93,13 +94,13 @@ export default function AdminDashboard() {
 
     if (error) {
       if (error.code === '23505') {
-        setAddError('Person already exists');
+        setAdminError('Person already exists');
       } else if (error.code === '42501' || error.message.includes('credentials')) {
-        setAddError('Invalid admin credentials.');
+        setAdminError('Invalid admin credentials.');
       } else if (error.code === 'PGRST202') {
-        setAddError('Admin setup incomplete. Run the SQL migration in Supabase.');
+        setAdminError('Admin setup incomplete. Run the SQL migration in Supabase.');
       } else {
-        setAddError(error.message || 'Failed to add person');
+        setAdminError(error.message || 'Failed to add person');
       }
     } else {
       const person = data as Person;
@@ -114,11 +115,25 @@ export default function AdminDashboard() {
     const creds = getStoredAdminCredentials();
     if (!creds || !confirm('Delete this person and all their notes?')) return;
 
+    setAdminError('');
+    setDeletingPersonId(id);
     const { error } = await supabase.rpc('admin_delete_person', {
       p_username: creds.username,
       p_password: creds.password,
       p_person_id: id,
     });
+
+    if (error) {
+      if (error.code === '42501' || error.message.includes('credentials')) {
+        setAdminError('Invalid admin credentials.');
+      } else if (error.code === 'PGRST202') {
+        setAdminError('Admin setup incomplete. Run the SQL migration in Supabase.');
+      } else {
+        setAdminError(error.message || 'Failed to delete person');
+      }
+      setDeletingPersonId(null);
+      return;
+    }
 
     if (!error) {
       setPeople((prev) => prev.filter((p) => p.id !== id));
@@ -127,6 +142,7 @@ export default function AdminDashboard() {
         setDescriptions([]);
       }
     }
+    setDeletingPersonId(null);
   }
 
   function handleLogout() {
@@ -176,6 +192,12 @@ export default function AdminDashboard() {
             Logout
           </button>
         </div>
+
+        {adminError && (
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
+            {adminError}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
           {/* People List */}
@@ -236,11 +258,17 @@ export default function AdminDashboard() {
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={(e) => {
+                          type="button"
+                          disabled={deletingPersonId === person.id}
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            handleDeletePerson(person.id);
+                            await handleDeletePerson(person.id);
                           }}
-                          className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                          className={`p-1.5 rounded-lg transition-all ${
+                            deletingPersonId === person.id
+                              ? 'opacity-60 cursor-not-allowed text-slate-400'
+                              : 'text-slate-400 hover:text-red-500 hover:bg-red-50'
+                          } opacity-100 lg:opacity-0 lg:group-hover:opacity-100`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -323,7 +351,7 @@ export default function AdminDashboard() {
                 onClick={() => {
                   setShowAddModal(false);
                   setNewName('');
-                  setAddError('');
+                  setAdminError('');
                 }}
                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
               >
@@ -331,9 +359,9 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            {addError && (
+            {adminError && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3 mb-4">
-                {addError}
+                {adminError}
               </div>
             )}
 
@@ -352,7 +380,7 @@ export default function AdminDashboard() {
                 onClick={() => {
                   setShowAddModal(false);
                   setNewName('');
-                  setAddError('');
+                  setAdminError('');
                 }}
                 className="flex-1 py-2.5 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
               >
